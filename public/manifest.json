@@ -1,0 +1,16 @@
+{
+  "name": "SupaStart - The Ultimate SaaS Starter Kit",
+  "short_name": "SupaStart",
+  "description": "Launch your SaaS faster with SupaStart - a complete Next.js starter kit with authentication, payments, database, and deployment ready out of the box.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+} 

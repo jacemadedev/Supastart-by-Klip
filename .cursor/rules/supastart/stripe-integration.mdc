@@ -1,0 +1,307 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Stripe Integration Guidelines
+
+## Setup and Configuration
+- Use environment variables for Stripe API keys (`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`)
+- Access Stripe instance via the `getStripeInstance()` utility from `@/lib/stripe`
+- Use test mode during development with stripe-specific test cards
+- Configure webhook endpoints with proper signature verification
+
+## Subscription Management
+- Store Stripe customer IDs in the `organizations` table (`stripe_customer_id` field)
+- Use the `change_subscription` RPC function for database updates
+- Track subscription status, current period end, and cancellation status
+- Map Stripe plans to database plans via `stripe_price_id`
+
+## Checkout Process
+- Use `StripeCheckoutButton` component for checkout initiation
+- Create checkout sessions using the `/api/stripe/create-checkout-session` endpoint
+- Include organization and plan metadata in Stripe sessions
+- Handle success and cancel redirects properly
+
+## Webhook Handling
+- Implement the webhook handler in `/app/api/webhooks/stripe/route.ts`
+- Verify webhook signatures using `stripe.webhooks.constructEvent`
+- Log webhook events to the database via `log_webhook_event` RPC
+- Handle specific event types: `checkout.session.completed`, `customer.subscription.created`, etc.
+- Update organization subscription status based on webhook events
+
+## Example Implementation
+
+### Stripe Checkout Button Component (based on your codebase)
+```typescript
+// src/components/billing/stripe-checkout-button.tsx
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { LoaderCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { errorToast, successToast } from "@/lib/toast";
+
+interface StripeCheckoutButtonProps {
+  planId: string;
+  organizationId: string;
+  variant?: "default" | "outline" | "secondary" | "ghost" | "link" | "destructive";
+  size?: "default" | "sm" | "lg" | "icon";
+  disabled?: boolean;
+  children: React.ReactNode;
+  className?: string;
+}
+
+export function StripeCheckoutButton({
+  planId,
+  organizationId,
+  variant = "default",
+  size = "default",
+  disabled = false,
+  children,
+  className,
+}: StripeCheckoutButtonProps) {
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  const handleCheckout = async () => {
+    setLoading(true);
+    try {
+      // Generate URLs for success and cancellation
+      const successUrl = `${window.location.origin}/dashboard/billing?success=true&plan=${planId}&org_id=${organizationId}`;
+      const cancelUrl = `${window.location.origin}/dashboard/billing?canceled=true&org_id=${organizationId}`;
+
+      // Call the API to create a checkout session
+      const response = await fetch("/api/stripe/create-checkout-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          planId,
+          organizationId,
+          successUrl,
+          cancelUrl,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create checkout session");
+      }
+
+      // If we get a URL back, redirect to it
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        // If we don't get a URL, it might be a free plan that was activated directly
+        router.refresh();
+        successToast("Your subscription has been updated successfully.");
+      }
+    } catch (error) {
+      console.error("Error creating checkout session:", error);
+      errorToast(
+        error instanceof Error
+          ? error.message
+          : "Failed to start checkout process"
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Button
+      variant={variant}
+      size={size}
+      disabled={disabled || loading}
+      onClick={handleCheckout}
+      className={className}
+    >
+      {loading ? (
+        <>
+          <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
+          Loading...
+        </>
+      ) : (
+        children
+      )}
+    </Button>
+  );
+}
+```
+
+### Stripe Webhook Handler (based on your codebase)
+```typescript
+// src/app/api/webhooks/stripe/route.ts
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { getStripeInstance } from '@/lib/stripe';
+import { headers } from 'next/headers';
+import Stripe from 'stripe';
+
+// Prevent static optimization
+export const dynamic = 'force-dynamic';
+
+interface ExtendedInvoice extends Stripe.Invoice {
+  subscription?: string;
+  payment_intent?: string;
+}
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.text();
+    const headersList = headers();
+    const signature = headersList.get('stripe-signature');
+    
+    if (!signature) {
+      console.error('Missing Stripe signature');
+      return NextResponse.json(
+        { error: 'Missing Stripe signature' },
+        { status: 400 }
+      );
+    }
+    
+    const stripe = getStripeInstance();
+    
+    // Verify the event came from Stripe
+    let event: Stripe.Event;
+    try {
+      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+      if (!webhookSecret) {
+        throw new Error('Missing Stripe webhook secret');
+      }
+      
+      event = stripe.webhooks.constructEvent(
+        body,
+        signature,
+        webhookSecret
+      );
+    } catch (error) {
+      console.error('Error verifying webhook:', error);
+      return NextResponse.json(
+        { error: 'Invalid webhook signature' },
+        { status: 400 }
+      );
+    }
+    
+    // Create Supabase client
+    const supabase = await createClient();
+    
+    // Log the webhook event
+    const objectId = 'id' in event.data.object ? String(event.data.object.id) : null;
+    const { data: webhookLogId } = await supabase.rpc('log_webhook_event', {
+      webhook_type: 'stripe',
+      event_type: event.type,
+      object_id: objectId,
+      payload: JSON.parse(JSON.stringify(event.data.object)),
+      was_processed: false
+    });
+    
+    // Process different event types
+    try {
+      switch (event.type) {
+        case 'checkout.session.completed': {
+          const session = event.data.object as Stripe.Checkout.Session;
+          
+          // Extract organization and plan IDs from metadata
+          const organizationId = session.metadata?.organization_id;
+          const planId = session.metadata?.plan_id;
+          
+          if (!organizationId || !planId) {
+            throw new Error('Missing required metadata');
+          }
+          
+          // Get subscription details
+          const subscriptionId = session.subscription as string;
+          if (!subscriptionId) {
+            throw new Error('Missing subscription ID');
+          }
+          
+          // Fetch subscription details
+          const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+          const priceId = subscription.items.data[0].price.id;
+          const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+          
+          // Update subscription in database
+          const { error } = await supabase.rpc('change_subscription', {
+            org_id: organizationId,
+            new_plan_id: planId,
+            stripe_sub_id: subscriptionId,
+            stripe_price: priceId,
+            period_end: periodEnd
+          });
+          
+          if (error) {
+            throw new Error(`Failed to update subscription: ${error.message}`);
+          }
+          
+          break;
+        }
+        
+        case 'customer.subscription.deleted': {
+          const subscription = event.data.object as Stripe.Subscription;
+          const organizationId = subscription.metadata?.organization_id;
+          
+          if (organizationId) {
+            // Get free plan
+            const { data: freePlan } = await supabase
+              .from('plans')
+              .select('id')
+              .eq('name', 'Free')
+              .single();
+            
+            if (!freePlan) {
+              throw new Error('Free plan not found');
+            }
+            
+            // Reset to free plan
+            const { error } = await supabase.rpc('change_subscription', {
+              org_id: organizationId,
+              new_plan_id: freePlan.id,
+              stripe_sub_id: null,
+              stripe_price: null
+            });
+            
+            if (error) {
+              throw new Error(`Failed to downgrade to free plan: ${error.message}`);
+            }
+          }
+          
+          break;
+        }
+        
+        // Handle other event types as needed
+      }
+      
+      // Mark webhook as processed
+      await supabase.rpc('mark_webhook_processed', {
+        webhook_id: webhookLogId,
+        was_processed: true
+      });
+      
+      return NextResponse.json({ received: true });
+    } catch (error) {
+      console.error(`Error handling webhook (${event.type}):`, error);
+      
+      // Log the error
+      await supabase.rpc('mark_webhook_processed', {
+        webhook_id: webhookLogId,
+        was_processed: false,
+        error_msg: error instanceof Error ? error.message : 'Unknown error'
+      });
+      
+      // Return 200 to prevent Stripe from retrying the webhook
+      return NextResponse.json({ 
+        received: true,
+        error: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  } catch (outerError) {
+    console.error('Critical error in webhook handler:', outerError);
+    return NextResponse.json(
+      { error: 'Critical webhook processing error' },
+      { status: 500 }
+    );
+  }
+}

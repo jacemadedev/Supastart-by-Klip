@@ -1,0 +1,240 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# API and Data Fetching Guidelines
+
+## API Routes Structure
+- Use Next.js App Router Route Handlers in `/app/api` directory
+- Always implement `dynamic = 'force-dynamic'` for non-cached API routes
+- Structure API routes in feature-based folders (`webhooks/`, `stripe/`, etc.)
+- Implement simple input validation with explicit checks on required fields
+- Return standardized response formats with appropriate status codes
+
+## Supabase Data Access
+- Use `createClient()` from `@/lib/supabase/server` for server components
+- Use `createClientComponentClient()` for client components
+- Use RPC function calls for complex database operations
+- Always handle database errors with proper error catching
+- Use proper error messages with console.error for logging
+
+## Authentication and Authorization
+- Verify session in API routes with `supabase.auth.getSession()`
+- Check organization membership and roles for permission checks
+- Use the organization context in client components for role checks
+- Always verify `organization_id` is valid in API routes
+
+## Error Handling
+- Implement try/catch blocks around all asynchronous operations
+- Log errors to console with detailed information
+- Return clear error messages in standardized format
+- Use toast notifications in client components (`errorToast`, `successToast`)
+- Never expose sensitive information in error messages
+
+## Examples
+
+### API Route Handler (based on your codebase)
+```typescript
+// src/app/api/stripe/create-checkout-session/route.ts
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { createCheckoutSession } from '@/lib/subscription';
+
+// Prevent static optimization
+export const dynamic = 'force-dynamic';
+
+export async function POST(request: Request) {
+  try {
+    // Parse request body
+    const { planId, organizationId, successUrl, cancelUrl } = await request.json();
+    
+    // Validate required parameters
+    if (!planId || !organizationId || !successUrl || !cancelUrl) {
+      return NextResponse.json(
+        { error: 'Missing required parameters' },
+        { status: 400 }
+      );
+    }
+    
+    // Create Supabase client
+    const supabase = await createClient();
+    
+    // Verify user has permission
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+    
+    // Verify user is an owner of the organization
+    const { data: membership, error: membershipError } = await supabase
+      .from('organization_members')
+      .select('role')
+      .eq('organization_id', organizationId)
+      .eq('user_id', session.user.id)
+      .single();
+    
+    if (membershipError || !membership || membership.role !== 'owner') {
+      return NextResponse.json(
+        { error: 'Only organization owners can manage subscriptions' },
+        { status: 403 }
+      );
+    }
+    
+    // Create the checkout session
+    const checkoutUrl = await createCheckoutSession(
+      organizationId,
+      planId,
+      successUrl,
+      cancelUrl
+    );
+    
+    if (!checkoutUrl) {
+      return NextResponse.json(
+        { error: 'Failed to create checkout session' },
+        { status: 500 }
+      );
+    }
+    
+    return NextResponse.json({ url: checkoutUrl });
+  } catch (error) {
+    console.error('Error creating checkout session:', error);
+    return NextResponse.json(
+      { 
+        error: 'Internal server error',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      },
+      { status: 500 }
+    );
+  }
+}
+```
+
+### Data Fetching in Client Component (based on your codebase)
+```typescript
+// src/components/organization/organization-manager.tsx
+"use client"
+
+import { useState, useEffect } from "react"
+import { useOrganizationContext } from "@/contexts/organization-context"
+import { Button } from "@/components/ui/button"
+import { Loader2 } from "lucide-react"
+import { errorToast, successToast } from "@/lib/toast"
+
+export function OrganizationMembers() {
+  const { 
+    organization, 
+    members, 
+    membersLoading, 
+    fetchMembers, 
+    removeMember 
+  } = useOrganizationContext()
+  
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null)
+  
+  // Fetch members when component mounts
+  useEffect(() => {
+    if (organization) {
+      fetchMembers()
+    }
+  }, [organization, fetchMembers])
+  
+  async function handleRemoveMember(memberId: string) {
+    if (!organization) return
+    
+    setRemovingMemberId(memberId)
+    try {
+      const result = await removeMember(organization.id, memberId)
+      
+      if (result.success) {
+        successToast("Member removed successfully")
+      } else {
+        errorToast(result.error || "Failed to remove member")
+      }
+    } catch (error) {
+      console.error("Error removing member:", error)
+      errorToast("An unexpected error occurred")
+    } finally {
+      setRemovingMemberId(null)
+    }
+  }
+  
+  if (membersLoading) {
+    return <div className="flex justify-center p-4"><Loader2 className="h-6 w-6 animate-spin" /></div>
+  }
+  
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-medium">Organization Members</h3>
+      
+      {members.length === 0 ? (
+        <p className="text-muted-foreground">No members found</p>
+      ) : (
+        <ul className="space-y-2">
+          {members.map((member) => (
+            <li key={member.id} className="flex items-center justify-between p-2 rounded-md border">
+              <div>
+                <p className="font-medium">{member.profiles.full_name || member.profiles.email}</p>
+                <p className="text-sm text-muted-foreground">{member.role}</p>
+              </div>
+              
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => handleRemoveMember(member.id)}
+                disabled={removingMemberId === member.id}
+              >
+                {removingMemberId === member.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Remove"
+                )}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+```
+
+## Advanced Validation (Optional)
+
+For more complex API routes that require sophisticated validation, you can optionally use Zod (already included in dependencies). This is recommended for:
+
+- APIs with complex nested object structures
+- When you need to enforce specific formats (emails, UUIDs, URLs)
+- When you want automatic TypeScript type inference from validation schema
+
+Example with Zod validation:
+
+```typescript
+import { z } from 'zod';
+
+// Input validation schema
+const paymentSchema = z.object({
+  amount: z.number().min(1),
+  currency: z.string().length(3),
+  customerId: z.string().uuid(),
+  metadata: z.object({
+    orderId: z.string(),
+    productIds: z.array(z.string())
+  }).optional()
+});
+
+// Usage
+const validation = paymentSchema.safeParse(body);
+if (!validation.success) {
+  return NextResponse.json(
+    { error: 'Invalid payment data', details: validation.error },
+    { status: 400 }
+  );
+}
+
+// Type-safe access to validated data
+const { amount, currency, customerId } = validation.data;
+```

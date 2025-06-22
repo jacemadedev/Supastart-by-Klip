@@ -1,0 +1,52 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# SupaStart Web App Development Rules
+
+This directory contains cursor rules for developing the SupaStart web application. These rules provide guidelines for consistent code style, architecture, and implementation patterns across the project.
+
+## Available Rules
+
+### [Next.js Components](mdc:nextjs-components.mdc)
+Guidelines for creating React components in the Next.js app router architecture, including component structure, state management, and styling using Tailwind CSS and shadcn/ui. Covers both server and client components with specific patterns used in the codebase.
+
+### [API and Data Fetching](mdc:api-data-fetching.mdc)
+Rules for implementing API routes, Supabase database interactions, error handling, and client-side data fetching. Includes specific patterns for authentication, authorization and RPC function usage.
+
+### [Stripe Integration](mdc:stripe-integration.mdc)
+Best practices for implementing Stripe checkout, subscriptions, and webhooks in the application, including using the `StripeCheckoutButton` component, handling subscription state, and processing webhook events.
+
+### [Organization and User Management](mdc:organization-user-management.mdc)
+Guidelines for implementing multi-tenant organization structures, using the Organization Context, managing user roles, and handling permissions based on the application's implementation patterns.
+
+## How to Use These Rules
+
+When working on a specific part of the application, refer to the relevant rule file for guidance on implementation details, code structure, and conventions. These rules are tailored to the specific patterns used in this codebase.
+
+Example usage:
+```
+# In Cursor, fetch a specific rule
+@cursor fetch rule web/nextjs-components
+```
+
+## SupaStart Features
+
+The SupaStart template provides the following primary features:
+
+1. **Multi-tenant Organizations**: Create and manage multiple organizations with user roles
+2. **Subscription Management**: Stripe integration for handling paid plans
+3. **Permission System**: Feature-based permissions and role-based access control
+4. **Credits System**: Track and manage usage credits for each organization
+5. **User Management**: Handle user profiles, authentication, and memberships
+
+All rules are designed to support these features while maintaining consistent code patterns.
+
+## Rule Structure
+
+Each rule file typically includes:
+1. Overview of the topic
+2. Key guidelines and best practices
+3. Specific implementation patterns
+4. Code examples that demonstrate the guidelines

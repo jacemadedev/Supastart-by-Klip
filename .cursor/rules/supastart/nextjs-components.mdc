@@ -1,0 +1,173 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Next.js Component Guidelines
+
+## Component Structure
+- Use functional components with TypeScript for type safety
+- Follow this consistent structure:
+  1. Import statements
+  2. Type and interface definitions
+  3. Component function declaration
+  4. State and hooks
+  5. Helper functions and effects
+  6. Return statement with JSX
+- Add 'use client' directive only for client components
+- Export components using named exports for better imports
+
+## Component Organization
+- Organize components in feature-based directories (`organization/`, `billing/`, etc.)
+- UI components should be placed in `src/components/ui/`
+- Shared dashboard components should go in `src/components/dashboard-components/`
+- Break large components into smaller, focused components
+
+## State Management
+- Use the `useOrganizationContext` hook for organization-related state
+- Leverage React hooks (useState, useEffect) appropriately
+- Keep loading states local to components when possible
+- Use proper error handling with try/catch blocks
+
+## Styling
+- Use Tailwind CSS for styling with consistent class ordering
+- Maintain consistent UI patterns with existing components
+- Use shadcn/ui components with proper customization
+- Use semantic HTML elements for proper accessibility
+
+## Examples
+
+### Server Component Example (based on your codebase)
+```tsx
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { OrganizationStats } from "@/components/organization/organization-stats"
+import { createClient } from "@/lib/supabase/server"
+import { redirect } from "next/navigation"
+
+export default async function DashboardPage() {
+  const supabase = await createClient()
+  
+  // Get current user session
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) {
+    redirect("/auth/login")
+  }
+  
+  // Get user's organization data
+  const { data: orgMember } = await supabase
+    .from("organization_members")
+    .select("organization_id, role")
+    .eq("user_id", session.user.id)
+    .single()
+    
+  if (!orgMember) {
+    redirect("/onboarding")
+  }
+  
+  // Get organization details
+  const { data: organization } = await supabase
+    .from("organizations")
+    .select("*")
+    .eq("id", orgMember.organization_id)
+    .single()
+  
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Dashboard</CardTitle>
+          <CardDescription>Welcome to your organization dashboard</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <OrganizationStats organizationId={organization.id} />
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+```
+
+### Client Component Example (based on your codebase)
+```tsx
+"use client"
+
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { useOrganizationContext } from "@/contexts/organization-context"
+import { Loader2 } from "lucide-react"
+import { errorToast, successToast } from "@/lib/toast"
+
+interface OrganizationFormProps {
+  onSaved?: () => void
+}
+
+export function OrganizationForm({ onSaved }: OrganizationFormProps) {
+  const { organization, updateOrganization } = useOrganizationContext()
+  const [name, setName] = useState(organization?.name || "")
+  const [description, setDescription] = useState(organization?.description || "")
+  const [isSaving, setIsSaving] = useState(false)
+  
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    
+    if (!organization) return
+    
+    setIsSaving(true)
+    try {
+      const result = await updateOrganization(organization.id, {
+        name,
+        description
+      })
+      
+      if (result.success) {
+        successToast("Organization updated successfully")
+        onSaved?.()
+      } else {
+        errorToast(result.error || "Failed to update organization")
+      }
+    } catch (error) {
+      console.error("Error updating organization:", error)
+      errorToast("An unexpected error occurred")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+  
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <Input
+          id="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Organization name"
+          disabled={isSaving}
+          required
+        />
+      </div>
+      
+      <div className="space-y-2">
+        <Input
+          id="description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Description (optional)"
+          disabled={isSaving}
+        />
+      </div>
+      
+      <Button type="submit" disabled={isSaving}>
+        {isSaving ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            Saving...
+          </>
+        ) : (
+          "Save Changes"
+        )}
+      </Button>
+    </form>
+  )
+}
+```

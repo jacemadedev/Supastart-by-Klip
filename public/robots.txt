@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: https://supastart.com/sitemap.xml
+
+# Block access to admin/dashboard areas
+Disallow: /dashboard/
+Disallow: /api/
+Disallow: /auth/
+Disallow: /_next/
+
+# Allow crawling of public pages
+Allow: /
+Allow: /features
+Allow: /changelog
+Allow: /styleguide 
