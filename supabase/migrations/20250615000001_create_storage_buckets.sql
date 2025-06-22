@@ -36,5 +36,4 @@ CREATE POLICY "Users can delete images from their organization"
     AND (storage.foldername(name))[1] = auth.jwt() ->> 'organization_id'
   );
 
--- Enable RLS on storage.objects (should already be enabled)
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY; 
+-- Note: RLS is already enabled on storage.objects by default in Supabase 

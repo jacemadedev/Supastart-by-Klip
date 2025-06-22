@@ -197,6 +197,4 @@ WITH CHECK (
 -- Credits can only be added through safe functions or by service role
 CREATE POLICY "Credits can only be added by system" ON "public"."organization_credits" 
 FOR INSERT TO "service_role"
-WITH CHECK (transaction_type = ANY (ARRAY['add'::"text", 'refund'::"text"]));
-
-COMMENT ON MIGRATION IS 'Critical security fix: Prevents users from directly manipulating credits'; 
+WITH CHECK (transaction_type = ANY (ARRAY['add'::"text", 'refund'::"text"])); 

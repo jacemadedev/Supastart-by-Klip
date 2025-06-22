@@ -36,5 +36,6 @@ COMMENT ON POLICY "Prevent direct credit manipulation" ON "public"."organization
 GRANT EXECUTE ON FUNCTION "public"."add_organization_credits_safe"("org_id" "uuid", "amount" integer, "description" "text", "transaction_type" "text") TO "authenticated";
 GRANT EXECUTE ON FUNCTION "public"."use_organization_credits_safe"("org_id" "uuid", "amount" integer, "description" "text", "feature_id" "text") TO "authenticated";
 
--- 6. Add security documentation
-COMMENT ON MIGRATION IS 'Completes credit system security hardening. Ensures no privilege escalation vulnerabilities exist and all credit operations are properly controlled and audited.'; 
+-- 6. Security documentation
+-- This migration completes credit system security hardening. 
+-- Ensures no privilege escalation vulnerabilities exist and all credit operations are properly controlled and audited. 
