@@ -264,13 +264,6 @@ export function SubscriptionManager() {
   
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-lg font-medium">Subscription Plans</h2>
-        <p className="text-sm text-muted-foreground">
-          Choose a plan that fits your organization&apos;s needs
-        </p>
-      </div>
-      
       {organization?.subscription?.cancel_at_period_end && (
         <Alert className="mb-6 bg-amber-50">
           <AlertCircle className="h-4 w-4 text-amber-600" />
