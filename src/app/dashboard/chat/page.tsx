@@ -292,22 +292,24 @@ function ChatPageContent() {
       )}
       
       {organization && (
-        <div className="max-w-4xl mx-auto mb-4 flex items-center justify-between text-sm text-muted-foreground flex-shrink-0">
-          <div className="flex items-center gap-4">
-            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-              agentEnabled && canUseAgents
-                ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20' 
-                : 'bg-gray-500/10 text-gray-600 border border-gray-500/20'
-            }`}>
-              {agentEnabled && canUseAgents ? '🤖 Agent Mode' : '💬 Traditional Mode'}
-            </span>
-            {webSearchEnabled && (
-              <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-600 border border-green-500/20">
-                🌐 Web Search
+        <div className="max-w-4xl mx-auto mb-4 px-4 flex-shrink-0">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-sm text-muted-foreground">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                agentEnabled && canUseAgents
+                  ? 'bg-blue-500/10 text-blue-600 border border-blue-500/20' 
+                  : 'bg-gray-500/10 text-gray-600 border border-gray-500/20'
+              }`}>
+                {agentEnabled && canUseAgents ? '🤖 Agent Mode' : '💬 Traditional Mode'}
               </span>
-            )}
+              {webSearchEnabled && (
+                <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-600 border border-green-500/20">
+                  🌐 Web Search
+                </span>
+              )}
+            </div>
+            <span className="text-xs sm:text-sm">Using credits from: <strong>{mismatch ? actualOrgName : organization.name}</strong></span>
           </div>
-          <span>Using credits from: <strong>{mismatch ? actualOrgName : organization.name}</strong></span>
         </div>
       )}
       
